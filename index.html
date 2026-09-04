@@ -124,7 +124,9 @@ html,body{margin:0;padding:0;background:#0d1712;}
   padding:9px 11px;font-family:inherit;font-size:14px;transition:border-color .15s;min-width:0;}
 .tin::placeholder{color:var(--faint);}
 .tin:focus{outline:none;border-color:var(--sage);}
-.line{display:flex;align-items:center;gap:11px;margin-bottom:9px;}
+textarea.tin{resize:none;overflow:hidden;line-height:1.45;display:block;}
+.line{display:flex;align-items:flex-start;gap:11px;margin-bottom:9px;}
+.line .tin{margin-top:1px;}
 .bullet{width:22px;height:22px;border-radius:50%;background:rgba(230,169,56,.16);color:var(--amber2);
   display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;
   font-family:'Fraunces',serif;}
@@ -137,23 +139,36 @@ html,body{margin:0;padding:0;background:#0d1712;}
 .gnote{font-size:12px;color:var(--muted);margin:2px 0 12px;}
 .goalitems{display:flex;flex-direction:column;gap:7px;margin-bottom:11px;}
 .gempty{font-size:13px;color:var(--faint);font-style:italic;padding:4px 0;}
-.goal{display:flex;align-items:center;gap:9px;}
+.goal{display:flex;align-items:flex-start;gap:9px;}
 .gcheck{width:22px;height:22px;border-radius:6px;border:2px solid var(--line2);background:transparent;
   color:var(--bg);font-size:13px;font-weight:800;cursor:pointer;flex-shrink:0;display:flex;
-  align-items:center;justify-content:center;transition:all .15s;}
+  align-items:center;justify-content:center;transition:all .15s;margin-top:2px;}
 .goal.done .gcheck{background:var(--sage);border-color:var(--sage);color:#10201a;}
 .gtext{flex:1;background:transparent;border:none;border-bottom:1px solid var(--line);color:var(--text);
-  padding:5px 2px;font-family:inherit;font-size:14px;transition:border-color .15s;min-width:0;}
+  padding:5px 2px;font-family:inherit;font-size:14px;line-height:1.45;transition:border-color .15s;min-width:0;
+  resize:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;display:block;}
 .gtext:focus{outline:none;border-color:var(--sage);}
 .goal.done .gtext{color:var(--faint);text-decoration:line-through;}
 .gremove{background:none;border:none;color:var(--faint);font-size:17px;cursor:pointer;padding:0 3px;
-  opacity:.5;transition:opacity .12s,color .12s;}
+  opacity:.5;transition:opacity .12s,color .12s;margin-top:1px;}
 .gremove:hover{opacity:1;color:var(--danger);}
-.goaladd{display:flex;gap:8px;}
+.goaladd{display:flex;gap:8px;align-items:flex-end;}
 .plan{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:11px;color:var(--text);
   padding:12px 13px;font-family:inherit;font-size:14px;line-height:1.55;resize:vertical;min-height:150px;}
 .plan::placeholder{color:var(--faint);}
 .plan:focus{outline:none;border-color:var(--sage);}
+
+.fieldhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;}
+.wk-field .fieldhead{margin-bottom:0;}
+.micbtn{background:var(--surface2);border:1px solid var(--line2);border-radius:50%;width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;cursor:pointer;
+  flex-shrink:0;padding:0;transition:background .15s,border-color .15s,transform .1s;}
+.micbtn:hover{border-color:var(--sage);}
+.micbtn:active{transform:scale(.92);}
+.micbtn.listening{background:rgba(217,138,106,.22);border-color:var(--danger);animation:micpulse 1.2s ease-in-out infinite;}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(217,138,106,.4);}50%{box-shadow:0 0 0 7px rgba(217,138,106,0);}}
+.line .micbtn{margin-top:2px;}
+.goaladd .micbtn{margin-bottom:1px;}
 
 .foot{text-align:center;color:var(--faint);font-size:12.5px;margin-top:8px;}
 
@@ -366,6 +381,52 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     function node(c){ return (typeof c==="string"||typeof c==="number")?document.createTextNode(String(c)):c; }
   }
 
+  /* ---- auto-growing text fields ---- */
+  function autoGrow(el){
+    el.style.height="auto";
+    el.style.height=el.scrollHeight+"px";
+  }
+
+  /* ---- voice dictation ---- */
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  var activeMic = null;
+  function micButton(el,opts){
+    if(!SpeechRec) return null;
+    opts = opts||{};
+    var btn=h("button",{type:"button",class:"micbtn","aria-label":"Dictate by voice",
+      title:"Click to speak — your words are typed in"},"\u{1F3A4}");
+    btn.addEventListener("click",function(ev){
+      ev.preventDefault();
+      if(btn.classList.contains("listening")){ if(activeMic) activeMic.stop(); return; }
+      if(activeMic) activeMic.stop();
+      var recog=new SpeechRec();
+      recog.lang=navigator.language||"en-US";
+      recog.continuous=true;
+      recog.interimResults=false;
+      var base=el.value||"";
+      var sep=base&&!/\s$/.test(base)?" ":"";
+      recog.onstart=function(){
+        activeMic=recog; btn.classList.add("listening"); btn.title="Listening… click to stop";
+      };
+      recog.onresult=function(ev2){
+        var said="";
+        for(var i=0;i<ev2.results.length;i++){ said+=ev2.results[i][0].transcript; }
+        el.value=base+sep+said;
+        el.dispatchEvent(new Event("input",{bubbles:true}));
+        if(opts.autoGrow) autoGrow(el);
+      };
+      function stopUi(){
+        if(activeMic===recog) activeMic=null;
+        btn.classList.remove("listening");
+        btn.title="Click to speak — your words are typed in";
+      }
+      recog.onerror=stopUi;
+      recog.onend=stopUi;
+      try{ recog.start(); }catch(e){ stopUi(); }
+    });
+    return btn;
+  }
+
   /* ---- month calendar + backup ---- */
   function startOfMonth(d){ var x=startOfDay(d); x.setDate(1); return x; }
   function addMonths(d,n){ var x=startOfMonth(d); x.setMonth(x.getMonth()+n); return x; }
@@ -543,6 +604,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         ? "Your weekly review saves alongside your daily entries. Tap any square in the map to revisit a day."
         : "Everything saves to this device. Your weekly review opens on Sundays \u2014 tap any square to revisit a day."
     ));
+
+    /* size any auto-growing text fields to fit their current content */
+    var grow=app.querySelectorAll(".autogrow");
+    for(var gi=0;gi<grow.length;gi++){ autoGrow(grow[gi]); }
   }
 
   function buildRing(day){
@@ -637,11 +702,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   }
 
   function reflectionField(day,field,i,placeholder,dim){
-    return h("div",{class:"line"},
+    var ta=h("textarea",{class:"tin autogrow",rows:"1",value:day[field][i]||"",placeholder:placeholder,
+      onInput:function(ev){ var dd=ensureDay(keyOf(view)); dd[field][i]=ev.target.value; save(); autoGrow(ta); }});
+    var mic=micButton(ta,{autoGrow:true});
+    var line=h("div",{class:"line"},
       h("span",{class:"bullet"+(dim?" dim":"")},String(i+1)),
-      h("input",{class:"tin",value:day[field][i]||"",placeholder:placeholder,
-        onInput:function(ev){ var dd=ensureDay(keyOf(view)); dd[field][i]=ev.target.value; save(); }})
+      ta
     );
+    if(mic) line.appendChild(mic);
+    return line;
   }
   function buildGratitude(day){
     var ph=["Something that went right\u2026","Someone you appreciate\u2026","A small good thing\u2026"];
@@ -680,11 +749,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         h("span",{class:"wk-l"},"needs attention"+((s.least&&s.least.count<7)?" \u00b7 "+s.least.count+"/7":"")))
     );
     function field(label,key,placeholder){
-      return h("div",{class:"wk-field"},
-        h("label",{class:"wk-flabel"},label),
-        h("textarea",{class:"plan",value:wk[key]||"",placeholder:placeholder,
-          onInput:function(ev){ upd(function(w){ w[key]=ev.target.value; return w; }); save(); }})
-      );
+      var ta=h("textarea",{class:"plan",value:wk[key]||"",placeholder:placeholder,
+        onInput:function(ev){ upd(function(w){ w[key]=ev.target.value; return w; }); save(); }});
+      var mic=micButton(ta,{});
+      var head=h("div",{class:"fieldhead"}, h("label",{class:"wk-flabel"},label));
+      if(mic) head.appendChild(mic);
+      return h("div",{class:"wk-field"}, head, ta);
     }
     return h("section",{class:"panel weekly"},
       h("div",{class:"wk-head"},
@@ -708,12 +778,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     var cols=h("div",{class:"goalcols"});
     cols.appendChild(goalList("Short term","Next few weeks","shortTerm"));
     cols.appendChild(goalList("Long term","The direction you're aiming","longTerm"));
+    var planTa=h("textarea",{class:"plan",value:data.goals.plan||"",
+      placeholder:"What's the actual path? Which daily habits feed which goal? What's the one thing that, done consistently, makes the rest easier?",
+      onInput:function(ev){ data.goals.plan=ev.target.value; save(); }});
+    var planMic=micButton(planTa,{});
+    var planHead=h("div",{class:"fieldhead"}, h("div",{class:"gtitle"},"How I'll get there"));
+    if(planMic) planHead.appendChild(planMic);
     var plan=h("div",{class:"goalcol"},
-      h("div",{class:"gtitle"},"How I'll get there"),
+      planHead,
       h("div",{class:"gnote"},"The plan that connects the two"),
-      h("textarea",{class:"plan",value:data.goals.plan||"",
-        placeholder:"What's the actual path? Which daily habits feed which goal? What's the one thing that, done consistently, makes the rest easier?",
-        onInput:function(ev){ data.goals.plan=ev.target.value; save(); }})
+      planTa
     );
     cols.appendChild(plan);
     section.appendChild(cols);
@@ -729,20 +803,26 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     var box=h("div",{class:"goalitems"});
     if(!items.length) box.appendChild(h("div",{class:"gempty"},"Nothing here yet."));
     items.forEach(function(it){
+      var gt=h("textarea",{class:"gtext autogrow",rows:"1",value:it.text,
+        onInput:function(ev){ it.text=ev.target.value; save(); autoGrow(gt); }});
       box.appendChild(h("div",{class:"goal"+(it.done?" done":"")},
         h("button",{class:"gcheck","aria-label":it.done?"Mark not done":"Mark done",
           onClick:function(){ it.done=!it.done; commit(); }}, it.done?"\u2713":""),
-        h("input",{class:"gtext",value:it.text,
-          onInput:function(ev){ it.text=ev.target.value; save(); }}),
+        gt,
         h("button",{class:"gremove","aria-label":"Remove goal",
           onClick:function(){ data.goals[listKey]=items.filter(function(x){return x.id!==it.id;}); commit(); }},"\u00d7")
       ));
     });
     wrap.appendChild(box);
-    var input=h("input",{class:"tin",placeholder:"Add a "+title.toLowerCase()+" goal\u2026",
-      onKeydown:function(ev){ if(ev.key==="Enter"){ doAdd(); } }});
+    var input=h("textarea",{class:"tin autogrow",rows:"1",placeholder:"Add a "+title.toLowerCase()+" goal\u2026",
+      onInput:function(){ autoGrow(input); },
+      onKeydown:function(ev){ if(ev.key==="Enter"&&!ev.shiftKey){ ev.preventDefault(); doAdd(); } }});
     function doAdd(){ var t=input.value.trim(); if(!t) return; items.push({id:uid(),text:t,done:false}); commit(); }
-    wrap.appendChild(h("div",{class:"goaladd"}, input, h("button",{class:"addbtn",onClick:doAdd},"Add")));
+    var mic=micButton(input,{autoGrow:true});
+    var addRow=h("div",{class:"goaladd"}, input);
+    if(mic) addRow.appendChild(mic);
+    addRow.appendChild(h("button",{class:"addbtn",onClick:doAdd},"Add"));
+    wrap.appendChild(addRow);
     return wrap;
   }
 
