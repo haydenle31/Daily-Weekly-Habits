@@ -832,5 +832,223 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   render();
 })();
 </script>
+<!-- =========================================================
+     PORTFOLIO ACCOUNTABILITY  (add-on for Daily Ledger)
+     Any day you logged that scored below 7/10 puts $50 "on the tab"
+     to move into your portfolio. Reads your existing habit data;
+     stores its own state separately under
+     'daily-ledger-accountability-v1' and never touches your ledger.
+     To uninstall: delete this whole block. Nothing else changes.
+     ============================================================ -->
+<style>
+#lp-acct{
+  --lp-bg:#1a2c25; --lp-line:#2c4438; --lp-ink:#ece5d3;
+  --lp-mut:#9db0a4; --lp-red:#e0674a; --lp-grn:#8fbf8f; --lp-chip:#12201a;
+  background:var(--lp-bg); color:var(--lp-ink);
+  border:1px solid var(--lp-line); border-radius:16px;
+  padding:20px 22px; margin:14px 0;
+  font-family:Inter, system-ui, -apple-system, sans-serif;
+}
+#lp-acct h2{font-size:20px; margin:0 0 2px; font-weight:600;}
+#lp-acct .lp-sub{color:var(--lp-mut); font-size:13px; margin:0 0 16px; line-height:1.45;}
+#lp-acct .lp-sub b{color:var(--lp-ink); font-weight:600;}
+#lp-acct .lp-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px;}
+#lp-acct .lp-tile{background:var(--lp-chip); border:1px solid var(--lp-line); border-radius:12px; padding:12px 14px;}
+#lp-acct .lp-tile .lp-num{font-size:26px; font-weight:700; line-height:1.1; letter-spacing:-0.5px;}
+#lp-acct .lp-tile .lp-lbl{font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--lp-mut); margin-top:4px;}
+#lp-acct .lp-tile.lp-owe .lp-num{color:var(--lp-red);}
+#lp-acct .lp-tile.lp-done .lp-num{color:var(--lp-grn);}
+#lp-acct .lp-msg{font-size:13.5px; line-height:1.5; padding:10px 12px; border-radius:10px; background:var(--lp-chip); border:1px solid var(--lp-line); margin-bottom:14px;}
+#lp-acct .lp-msg.lp-clear{color:var(--lp-grn);}
+#lp-acct .lp-list{display:flex; flex-direction:column; gap:8px;}
+#lp-acct .lp-row{display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--lp-line); border-radius:10px; background:transparent;}
+#lp-acct .lp-row.lp-paid{opacity:0.62;}
+#lp-acct .lp-date{flex:1; font-size:14px;}
+#lp-acct .lp-row.lp-paid .lp-date{text-decoration:line-through; text-decoration-color:var(--lp-mut);}
+#lp-acct .lp-badge{font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; border:1px solid var(--lp-line); color:var(--lp-mut); background:var(--lp-chip); white-space:nowrap;}
+#lp-acct .lp-amt{font-size:13px; color:var(--lp-mut); min-width:34px; text-align:right;}
+#lp-acct button.lp-btn{cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:8px; border:1px solid var(--lp-line); background:var(--lp-chip); color:var(--lp-ink); transition:.15s;}
+#lp-acct button.lp-btn:hover{border-color:var(--lp-ink);}
+#lp-acct button.lp-btn.lp-primary{background:var(--lp-red); border-color:var(--lp-red); color:#1a120f;}
+#lp-acct button.lp-btn.lp-primary:hover{filter:brightness(1.08);}
+#lp-acct button.lp-btn.lp-ghost{background:transparent; color:var(--lp-grn); border-color:var(--lp-line);}
+#lp-acct .lp-empty{color:var(--lp-mut); font-size:13.5px; padding:6px 2px;}
+#lp-acct .lp-rules{margin-top:14px; border-top:1px solid var(--lp-line); padding-top:12px;}
+#lp-acct .lp-rules summary{cursor:pointer; color:var(--lp-mut); font-size:12.5px; list-style:none;}
+#lp-acct .lp-rules summary::-webkit-details-marker{display:none;}
+#lp-acct .lp-rules summary:before{content:"\2699  Rules";}
+#lp-acct details[open] .lp-rules summary:before,#lp-acct .lp-rules[open] summary:before{content:"\2699  Rules";}
+#lp-acct .lp-rulegrid{display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; margin-top:10px; font-size:13px; color:var(--lp-mut);}
+#lp-acct .lp-rulegrid label{display:flex; align-items:center; gap:7px;}
+#lp-acct .lp-rulegrid input[type=number]{width:58px; background:var(--lp-chip); color:var(--lp-ink); border:1px solid var(--lp-line); border-radius:7px; padding:4px 7px; font-family:inherit; font-size:13px;}
+#lp-acct .lp-rulegrid input[type=checkbox]{accent-color:var(--lp-red); width:15px; height:15px;}
+@media(max-width:520px){#lp-acct .lp-stats{grid-template-columns:1fr 1fr;} #lp-acct .lp-tile:first-child{grid-column:1 / -1;}}
+</style>
+<script>
+(function(){
+  "use strict";
+  var LEDGER_KEY = "daily-ledger-v1";
+  var ACCT_KEY   = "daily-ledger-accountability-v1";
+
+  function readJSON(key){ try { return JSON.parse(localStorage.getItem(key)) || null; } catch(e){ return null; } }
+
+  function loadAcct(){
+    var a = readJSON(ACCT_KEY) || {};
+    if (typeof a.version   !== "number")  a.version = 1;
+    if (typeof a.threshold !== "number")  a.threshold = 7;   // score BELOW this = a $50 slip
+    if (typeof a.amount    !== "number")  a.amount = 50;      // dollars per slip
+    if (typeof a.countBlank !== "boolean") a.countBlank = false; // count logged-but-empty days
+    if (!a.funded || typeof a.funded !== "object") a.funded = {};
+    return a;
+  }
+  function saveAcct(a){ try { localStorage.setItem(ACCT_KEY, JSON.stringify(a)); } catch(e){} }
+
+  function todayStr(){
+    var d = new Date();
+    return d.getFullYear() + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + ("0"+d.getDate()).slice(-2);
+  }
+  function scoreOf(day){
+    var c = (day && day.checks) || {}, n = 0;
+    for (var k in c){ if (c[k]) n++; }
+    return n;
+  }
+  function anyText(arr){ return Array.isArray(arr) && arr.some(function(x){ return x && String(x).trim(); }); }
+  function isLogged(day, score){
+    if (!day) return false;
+    if (score > 0) return true;
+    return anyText(day.gratitude) || anyText(day.improvements);
+  }
+  function fmtMoney(n){ return "$" + Number(n).toLocaleString("en-US"); }
+  function fmtDate(iso){
+    var p = iso.split("-"); var d = new Date(+p[0], +p[1]-1, +p[2]);
+    return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+  }
+
+  function computeBreaches(acct){
+    var led = readJSON(LEDGER_KEY) || {};
+    var days = led.days || {};
+    var today = todayStr();
+    var out = [];
+    Object.keys(days).forEach(function(date){
+      if (date >= today) return;                    // skip today (in progress) & anything future
+      var day = days[date];
+      var s = scoreOf(day);
+      if (!isLogged(day, s) && !acct.countBlank) return;  // ignore untouched squares
+      if (s < acct.threshold) out.push({ date: date, score: s });
+    });
+    out.sort(function(a,b){ return a.date < b.date ? 1 : -1; });  // newest first
+    return out;
+  }
+
+  function ensurePanel(){
+    var el = document.getElementById("lp-acct");
+    if (el) return el;
+    el = document.createElement("section");
+    el.id = "lp-acct";
+    // Try to slot it right after the calendar, else near the top of the content column.
+    var cal = document.querySelector(".calpanel");
+    if (cal && cal.parentNode){ cal.parentNode.insertBefore(el, cal.nextSibling); return el; }
+    var col = document.querySelector(".col");
+    if (col){ col.insertBefore(el, col.firstChild); return el; }
+    var main = document.querySelector("main") || document.body;
+    main.insertBefore(el, main.firstChild);
+    return el;
+  }
+
+  function render(){
+    var acct = loadAcct();
+    var el = ensurePanel();
+    // don't rebuild while the user is typing in the rules inputs
+    if (el.contains(document.activeElement) && /INPUT/.test(document.activeElement.tagName)) return;
+
+    var breaches = computeBreaches(acct);
+    var owedList  = breaches.filter(function(b){ return !acct.funded[b.date]; });
+    var paidList  = breaches.filter(function(b){ return  acct.funded[b.date]; });
+    var owe   = owedList.length * acct.amount;
+    var paid  = paidList.length * acct.amount;
+    var total = breaches.length * acct.amount;
+
+    var msg;
+    if (breaches.length === 0){
+      msg = '<div class="lp-msg lp-clear">No slips yet. Keep every logged day at ' + acct.threshold + '/10 or better and the tab stays empty.</div>';
+    } else if (owe > 0){
+      msg = '<div class="lp-msg">You owe your portfolio <b>' + fmtMoney(owe) + '</b> across <b>' + owedList.length + '</b> day' + (owedList.length>1?'s':'') + ' under ' + acct.threshold + '/10. Move the money, then tap <b>Fund</b> to clear it.</div>';
+    } else {
+      msg = '<div class="lp-msg lp-clear">Caught up — every slip funded. ' + fmtMoney(paid) + ' moved into your portfolio so far. 💪</div>';
+    }
+
+    var rows;
+    if (breaches.length === 0){
+      rows = '<div class="lp-empty">Days you log below ' + acct.threshold + '/10 will appear here as ' + fmtMoney(acct.amount) + ' owed.</div>';
+    } else {
+      rows = breaches.map(function(b){
+        var funded = !!acct.funded[b.date];
+        return '<div class="lp-row' + (funded ? ' lp-paid' : '') + '">' +
+                 '<span class="lp-date">' + fmtDate(b.date) + '</span>' +
+                 '<span class="lp-badge">' + b.score + '/10</span>' +
+                 '<span class="lp-amt">' + fmtMoney(acct.amount) + '</span>' +
+                 (funded
+                    ? '<button class="lp-btn lp-ghost" data-unfund="' + b.date + '">Funded ✓</button>'
+                    : '<button class="lp-btn lp-primary" data-fund="' + b.date + '">Fund ' + fmtMoney(acct.amount) + '</button>') +
+               '</div>';
+      }).join("");
+    }
+
+    el.innerHTML =
+      '<h2>Portfolio accountability</h2>' +
+      '<p class="lp-sub">Every day you log under <b>' + acct.threshold + '/10</b> owes <b>' + fmtMoney(acct.amount) + '</b> into your portfolio. Today and un-logged days don’t count — only days already in the books.</p>' +
+      '<div class="lp-stats">' +
+        '<div class="lp-tile lp-owe"><div class="lp-num">' + fmtMoney(owe) + '</div><div class="lp-lbl">Owed now</div></div>' +
+        '<div class="lp-tile lp-done"><div class="lp-num">' + fmtMoney(paid) + '</div><div class="lp-lbl">Funded</div></div>' +
+        '<div class="lp-tile"><div class="lp-num">' + breaches.length + '</div><div class="lp-lbl">Slip days</div></div>' +
+      '</div>' +
+      msg +
+      '<div class="lp-list">' + rows + '</div>' +
+      '<details class="lp-rules"><summary></summary>' +
+        '<div class="lp-rulegrid">' +
+          '<label>$ per slip <input type="number" min="1" step="5" id="lp-amount" value="' + acct.amount + '"></label>' +
+          '<label>Trigger under <input type="number" min="1" max="10" step="1" id="lp-thresh" value="' + acct.threshold + '">/10</label>' +
+          '<label><input type="checkbox" id="lp-blank"' + (acct.countBlank ? " checked" : "") + '> count 0/10 logged days</label>' +
+        '</div>' +
+      '</details>';
+
+    // wire up
+    el.querySelectorAll("[data-fund]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var a = loadAcct(); a.funded[btn.getAttribute("data-fund")] = true; saveAcct(a); render();
+      });
+    });
+    el.querySelectorAll("[data-unfund]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var a = loadAcct(); delete a.funded[btn.getAttribute("data-unfund")]; saveAcct(a); render();
+      });
+    });
+    var amt = el.querySelector("#lp-amount");
+    if (amt) amt.addEventListener("change", function(){
+      var a = loadAcct(); var v = parseInt(amt.value, 10); if (v>0){ a.amount = v; saveAcct(a); } render();
+    });
+    var th = el.querySelector("#lp-thresh");
+    if (th) th.addEventListener("change", function(){
+      var a = loadAcct(); var v = parseInt(th.value, 10); if (v>=1 && v<=10){ a.threshold = v; saveAcct(a); } render();
+    });
+    var bl = el.querySelector("#lp-blank");
+    if (bl) bl.addEventListener("change", function(){
+      var a = loadAcct(); a.countBlank = bl.checked; saveAcct(a); render();
+    });
+  }
+
+  function boot(){
+    render();
+    // keep the tab in sync as you check habits off or edit past days
+    setInterval(render, 2000);
+    window.addEventListener("storage", function(e){ if (e.key === LEDGER_KEY) render(); });
+    document.addEventListener("visibilitychange", function(){ if (!document.hidden) render(); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+<!-- ===================== END PORTFOLIO ACCOUNTABILITY ===================== -->
+
 </body>
 </html>
